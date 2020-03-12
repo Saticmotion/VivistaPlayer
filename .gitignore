@@ -1,0 +1,12 @@
+
+VivistaPlayer/x64/
+
+test.mp4
+
+.vs/
+
+VivistaPlayer/VivistaPlayer.vcxproj.user
+
+VivistaPlayer/VivistaPlayer.vcxproj.filters
+
+*.vcxproj
