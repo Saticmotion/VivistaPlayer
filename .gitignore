@@ -10,3 +10,9 @@ VivistaPlayer/VivistaPlayer.vcxproj.user
 VivistaPlayer/VivistaPlayer.vcxproj.filters
 
 *.vcxproj
+
+*.exe
+
+*.ilk
+
+*.pdb
