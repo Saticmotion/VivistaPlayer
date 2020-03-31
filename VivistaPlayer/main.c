@@ -372,6 +372,7 @@ int main(int argc, char* argv[])
 	flush_pkt.data = (uint8_t *) "FLUSH";
 
 	SDL_Event event;
+	
 
 	for (;;)
 	{
@@ -1589,7 +1590,6 @@ void video_display(VideoState* videoState)
 			rect.h = h;
 
 			SDL_LockMutex(screen_mutex);
-
 			SDL_UpdateYUVTexture(
 				videoState->texture,
 				&rect,

@@ -16,13 +16,13 @@ public:
 	// Reversed Z is used on modern platforms, and improves depth buffer precision.
 	virtual bool GetUsesReverseZ() = 0;
 
-	// Begin modifying texture data. You need to pass texture width/height too, since some graphics APIs
+	// Create a new texture on the GPU You need to pass texture width/height too, since some graphics APIs
 	// (e.g. OpenGL ES) do not have a good way to query that from the texture itself...
 	//
 	// Returns pointer into the data buffer to write into (or NULL on failure), and pitch in bytes of a single texture row.
-	virtual void* BeginModifyTexture(void* textureHandle, int textureWidth, int textureHeight, int* outRowPitch) = 0;
-	// End modifying texture data.
-	virtual void EndModifyTexture(void* textureHandle, int textureWidth, int textureHeight, int rowPitch, void* dataPtr) = 0;
+	virtual void Create(int textureWidth, int textureHeight, int* outRowPitch) = 0;
+	// Upload new texture data to an existing texture resource.
+	virtual void Upload(unsigned char* ych, unsigned char* uch, unsigned char* vch) = 0;
 };
 
 RenderAPI* CreateRenderAPI(UnityGfxRenderer apiType);
