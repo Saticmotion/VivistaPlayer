@@ -26,23 +26,24 @@ public:
 	void Init(const char* filePath);
 	void Start();
 	void Stop();
-	void Seek(float sec);
-	void Pause();
+	void Seek(float seconds);
 
 	PlayerState GetPlayerState();
 	double GetVideoFrame(uint8_t** outputY, uint8_t** outputU, uint8_t** outputV);
 	double GetAudioFrame(uint8_t** outputFrame, int& frameSize);
 	void FreeVideoFrame();
 	void FreeAudioFrame();
-	void EnableVideo(bool enable);
-	void EnableAudio(bool enable);
+	void EnableVideo(bool isEnabled);
+	void EnableAudio(bool isEnabled);
 
-
+	Decoder::VideoInfo getVideoInfo();
+	Decoder::AudioInfo getAudioInfo();
+	bool isVideoBufferEmpty();
+	bool isVideoBufferFull();
 private:
-	PlayerState mPlayerState;
-	VideoState* mVideoState;
-	double mSeekTime;
-	bool mPause;
+	PlayerState					mPlayerState;
+	std::unique_ptr<Decoder>	mDecoder;
+	double						mSeekTime;
 
-	std::thread mDecodeThread;
+	std::thread					mDecodeThread;
 };

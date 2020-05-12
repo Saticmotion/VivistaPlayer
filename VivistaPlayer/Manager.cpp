@@ -1,24 +1,23 @@
 #include "Manager.h"
+#include "Decoder.h"
 
 Manager::Manager()
 {
 	mPlayerState = UNINITIALIZED;
 	mSeekTime = 0.0;
-	mVideoState = (VideoState*)av_mallocz(sizeof(VideoState));
+	mDecoder = std::make_unique<Decoder>();
 }
 
 Manager::~Manager()
 {
-	// stop decoding
-	av_free(mVideoState);
+	Stop();
 }
 
 void Manager::Init(const char* filePath)
 {
-	if (mVideoState == NULL || !decoder_init(filePath))
+	if (mDecoder == NULL || !mDecoder->init(filePath))
 	{
 		mPlayerState = INIT_FAIL;
-		av_free(mVideoState);
 	}
 	else
 	{
@@ -28,13 +27,13 @@ void Manager::Init(const char* filePath)
 
 void Manager::Start()
 {
-	if (mVideoState == NULL || mPlayerState != UNINITIALIZED)
+	if (mDecoder == NULL || mPlayerState != UNINITIALIZED)
 	{
 		return;
 	}
 	
 	mDecodeThread = std::thread([&]() {
-			if (!(mVideoState->video_enabled || mVideoState->audio_enabled))
+			if (!(mDecoder->getVideoInfo().isEnabled || mDecoder->getAudioInfo().isEnabled))
 			{
 				return;
 			}
@@ -46,16 +45,13 @@ void Manager::Start()
 				switch (mPlayerState)
 				{
 				case PLAYING:
-					if (!decode(mVideoState)) {
+					if (!mDecoder->decode()) {
 						mPlayerState = PLAY_EOF;
 					}
 					break;
 				case SEEK:
-					seek_stream(mVideoState, mSeekTime);
+					mDecoder->seek(mSeekTime);
 					mPlayerState = PLAYING;
-					break;
-				case PAUSE:
-					pause_stream(mVideoState, mPause);
 					break;
 				case PLAY_EOF:
 					break;
@@ -64,37 +60,27 @@ void Manager::Start()
 		});
 }
 
-void Manager::Seek(float sec)
+void Manager::Seek(float seconds)
 {
 	if (mPlayerState < INITIALIZED || mPlayerState == SEEK)
 	{
 		return;
 	}
 
-	mSeekTime = sec;
+	mSeekTime = seconds;
 	mPlayerState = SEEK;
 }
 
 void Manager::Stop()
 {
 	mPlayerState = STOP;
-	if (mDecodeThread.joinable)
+	if (mDecodeThread.joinable())
 	{
 		mDecodeThread.join();
 	}
 
-	mVideoState = NULL;
+	mDecoder = NULL;
 	mPlayerState = UNINITIALIZED;
-}
-
-void Manager::Pause()
-{
-	if (mPlayerState < INITIALIZED || mPlayerState == PAUSE)
-	{
-		return;
-	}
-
-	mPlayerState = PAUSE;
 }
 
 Manager::PlayerState Manager::GetPlayerState()
@@ -104,22 +90,85 @@ Manager::PlayerState Manager::GetPlayerState()
 
 double Manager::GetVideoFrame(uint8_t** outputY, uint8_t** outputU, uint8_t** outputV)
 {
-	if (mVideoState == NULL || !mVideoState->video_enabled || mPlayerState == SEEK)
+	if (mDecoder == NULL || !mDecoder->getVideoInfo().isEnabled || mPlayerState == SEEK)
 	{
 		*outputY = *outputU = *outputV = NULL;
 		return -1;
 	}
 
-	return get_video_frame(outputY, outputU, outputV);
+	return mDecoder->getVideoFrame(outputY, outputU, outputV);
 }
 
 double Manager::GetAudioFrame(uint8_t** outputFrame, int& frameSize)
 {
-	if (mVideoState == NULL || !mVideoState->audio_enabled || mPlayerState == SEEK)
+	if (mDecoder == NULL || !mDecoder->getAudioInfo().isEnabled || mPlayerState == SEEK)
 	{
 		*outputFrame = NULL;
 		return -1;
 	}
 
-	return get_audio_frame(outputFrame, frameSize);
+	return mDecoder->getAudioFrame(outputFrame, frameSize);
+}
+
+void Manager::FreeVideoFrame()
+{
+	if (mDecoder == NULL || !mDecoder->getVideoInfo().isEnabled || mPlayerState == SEEK) {
+		return;
+	}
+
+	mDecoder->freeVideoFrame();
+}
+
+
+
+void Manager::FreeAudioFrame()
+{
+	if (mDecoder == NULL || !mDecoder->getAudioInfo().isEnabled || mPlayerState == SEEK) {
+		return;
+	}
+
+	mDecoder->freeAudioFrame();
+}
+
+void Manager::EnableVideo(bool isEnabled)
+{
+	if (mDecoder == NULL)
+	{
+		return;
+	}
+	mDecoder->videoEnable(isEnabled);
+}
+
+void Manager::EnableAudio(bool isEnabled)
+{
+	if (mDecoder == NULL)
+	{
+		return;
+	}
+
+	mDecoder->audioEnable(isEnabled);
+}
+
+Decoder::VideoInfo Manager::getVideoInfo()
+{
+	return Decoder::VideoInfo();
+}
+
+Decoder::AudioInfo Manager::getAudioInfo()
+{
+	return Decoder::AudioInfo();
+}
+
+bool Manager::isVideoBufferEmpty()
+{
+	Decoder::VideoInfo* videoInfo = &(mDecoder->getVideoInfo());
+	Decoder::BufferState EMPTY = Decoder::BufferState::EMPTY;
+	return videoInfo->isEnabled && videoInfo->bufferState == EMPTY;
+}
+
+bool Manager::isVideoBufferFull()
+{
+	Decoder::VideoInfo* videoInfo = &(mDecoder->getVideoInfo());
+	Decoder::BufferState FULL = Decoder::BufferState::FULL;
+	return videoInfo->isEnabled && videoInfo->bufferState == FULL;
 }
