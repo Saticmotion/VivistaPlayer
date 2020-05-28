@@ -1,0 +1,6 @@
+﻿  VivistaPlayer.cpp
+  LINK : D:\Repositories\C++\Vivista\Native\bin\VivistaPlayer.dll not found or not built by the last incremental link; performing full link
+x64\Debug\Decoder.obj : warning LNK4042: object specified more than once; extras ignored
+     Creating library D:\Repositories\C++\Vivista\Native\bin\VivistaPlayer.lib and object D:\Repositories\C++\Vivista\Native\bin\VivistaPlayer.exp
+RenderAPI_D3D11.obj : error LNK2001: unresolved external symbol "public: virtual void __cdecl RenderAPI::getResourcePointers(void * &,void * &,void * &)" (?getResourcePointers@RenderAPI@@UEAAXAEAPEAX00@Z)
+D:\Repositories\C++\Vivista\Native\bin\VivistaPlayer.dll : fatal error LNK1120: 1 unresolved externals
