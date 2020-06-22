@@ -40,10 +40,11 @@ public:
 	Decoder::AudioInfo getAudioInfo();
 	bool isVideoBufferEmpty();
 	bool isVideoBufferFull();
-private:
-	PlayerState					mPlayerState;
-	std::unique_ptr<Decoder>	mDecoder;
-	double						mSeekTime;
 
-	std::thread					mDecodeThread;
+private:
+	PlayerState playerState;
+	Decoder* decoder;
+	double seekTime;
+
+	std::thread decodeThread;
 };

@@ -3,58 +3,64 @@
 
 Manager::Manager()
 {
-	mPlayerState = UNINITIALIZED;
-	mSeekTime = 0.0;
-	mDecoder = std::make_unique<Decoder>();
+	playerState = UNINITIALIZED;
+	seekTime = 0.0;
+	decoder = new Decoder();
 }
 
 Manager::~Manager()
 {
+	delete decoder;
 	Stop();
 }
 
 void Manager::Init(const char* filePath)
 {
-	if (mDecoder == NULL || !mDecoder->init(filePath))
+	if (decoder == NULL || !decoder->Init(filePath))
 	{
-		mPlayerState = INIT_FAIL;
+		playerState = INIT_FAIL;
 	}
 	else
 	{
-		mPlayerState = INITIALIZED;
+		playerState = INITIALIZED;
 	}
 }
 
 void Manager::Start()
 {
-	if (mDecoder == NULL || mPlayerState != UNINITIALIZED)
+	if (decoder == NULL || 
+		(playerState != INITIALIZED 
+			&& playerState != PAUSE
+			&& playerState != STOP))
 	{
 		return;
 	}
 	
-	mDecodeThread = std::thread([&]() {
-			if (!(mDecoder->getVideoInfo().isEnabled || mDecoder->getAudioInfo().isEnabled))
+	decodeThread = std::thread([&]() {
+			if (!(decoder->GetVideoInfo().isEnabled || decoder->GetAudioInfo().isEnabled))
 			{
 				return;
 			}
 
-			mPlayerState = PLAYING;
+			playerState = PLAYING;
 
-			while (mPlayerState != STOP)
+			while (playerState != STOP)
 			{
-				switch (mPlayerState)
+				switch (playerState)
 				{
-				case PLAYING:
-					if (!mDecoder->decode()) {
-						mPlayerState = PLAY_EOF;
-					}
-					break;
-				case SEEK:
-					mDecoder->seek(mSeekTime);
-					mPlayerState = PLAYING;
-					break;
-				case PLAY_EOF:
-					break;
+					case PLAYING:
+						if (!decoder->Decode()) {
+							playerState = PLAY_EOF;
+						}
+
+
+						break;
+					case SEEK:
+						decoder->Seek(seekTime);
+						playerState = PLAYING;
+						break;
+					case PLAY_EOF:
+						break;
 				}
 			}
 		});
@@ -62,113 +68,111 @@ void Manager::Start()
 
 void Manager::Seek(float seconds)
 {
-	if (mPlayerState < INITIALIZED || mPlayerState == SEEK)
+	if (playerState < INITIALIZED || playerState == SEEK)
 	{
 		return;
 	}
 
-	mSeekTime = seconds;
-	mPlayerState = SEEK;
+	seekTime = seconds;
+	playerState = SEEK;
 }
 
 void Manager::Stop()
 {
-	mPlayerState = STOP;
-	if (mDecodeThread.joinable())
+	playerState = STOP;
+	if (decodeThread.joinable())
 	{
-		mDecodeThread.join();
+		decodeThread.join();
 	}
 
-	mDecoder = NULL;
-	mPlayerState = UNINITIALIZED;
+	decoder = NULL;
+	playerState = UNINITIALIZED;
 }
 
 Manager::PlayerState Manager::GetPlayerState()
 {
-	return mPlayerState;
+	return playerState;
 }
 
 double Manager::GetVideoFrame(uint8_t** outputY, uint8_t** outputU, uint8_t** outputV)
 {
-	if (mDecoder == NULL || !mDecoder->getVideoInfo().isEnabled || mPlayerState == SEEK)
+	if (decoder == NULL || !decoder->GetVideoInfo().isEnabled || playerState == SEEK)
 	{
 		*outputY = *outputU = *outputV = NULL;
 		return -1;
 	}
 
-	return mDecoder->getVideoFrame(outputY, outputU, outputV);
+	return decoder->GetVideoFrame(outputY, outputU, outputV);
 }
 
 double Manager::GetAudioFrame(uint8_t** outputFrame, int& frameSize)
 {
-	if (mDecoder == NULL || !mDecoder->getAudioInfo().isEnabled || mPlayerState == SEEK)
+	if (decoder == NULL || !decoder->GetAudioInfo().isEnabled || playerState == SEEK)
 	{
 		*outputFrame = NULL;
 		return -1;
 	}
 
-	return mDecoder->getAudioFrame(outputFrame, frameSize);
+	return decoder->GetAudioFrame(outputFrame, frameSize);
 }
 
 void Manager::FreeVideoFrame()
 {
-	if (mDecoder == NULL || !mDecoder->getVideoInfo().isEnabled || mPlayerState == SEEK) {
+	if (decoder == NULL || !decoder->GetVideoInfo().isEnabled || playerState == SEEK) {
 		return;
 	}
 
-	mDecoder->freeVideoFrame();
+	decoder->FreeVideoFrame();
 }
 
 
 
 void Manager::FreeAudioFrame()
 {
-	if (mDecoder == NULL || !mDecoder->getAudioInfo().isEnabled || mPlayerState == SEEK) {
+	if (decoder == NULL || !decoder->GetAudioInfo().isEnabled || playerState == SEEK) {
 		return;
 	}
 
-	mDecoder->freeAudioFrame();
+	decoder->FreeAudioFrame();
 }
 
 //void Manager::EnableVideo(bool isEnabled)
 //{
-//	if (mDecoder == NULL)
+//	if (decoder == NULL)
 //	{
 //		return;
 //	}
-//	mDecoder->videoEnable(isEnabled);
+//	decoder->videoEnable(isEnabled);
 //}
 //
 //void Manager::EnableAudio(bool isEnabled)
 //{
-//	if (mDecoder == NULL)
+//	if (decoder == NULL)
 //	{
 //		return;
 //	}
 //
-//	mDecoder->audioEnable(isEnabled);
+//	decoder->audioEnable(isEnabled);
 //}
 
 Decoder::VideoInfo Manager::getVideoInfo()
 {
-	return Decoder::VideoInfo();
+	return decoder->GetVideoInfo();
 }
 
 Decoder::AudioInfo Manager::getAudioInfo()
 {
-	return Decoder::AudioInfo();
+	return decoder->GetAudioInfo();
 }
 
 bool Manager::isVideoBufferEmpty()
 {
-	Decoder::VideoInfo* videoInfo = &(mDecoder->getVideoInfo());
-	Decoder::BufferState EMPTY = Decoder::BufferState::EMPTY;
-	return videoInfo->isEnabled && videoInfo->bufferState == EMPTY;
+	Decoder::VideoInfo* videoInfo = &(decoder->GetVideoInfo());
+	return videoInfo->isEnabled && videoInfo->bufferState == Decoder::BufferState::EMPTY;
 }
 
 bool Manager::isVideoBufferFull()
 {
-	Decoder::VideoInfo* videoInfo = &(mDecoder->getVideoInfo());
-	Decoder::BufferState FULL = Decoder::BufferState::FULL;
-	return videoInfo->isEnabled && videoInfo->bufferState == FULL;
+	Decoder::VideoInfo* videoInfo = &(decoder->GetVideoInfo());
+	return videoInfo->isEnabled && videoInfo->bufferState == Decoder::BufferState::FULL;
 }

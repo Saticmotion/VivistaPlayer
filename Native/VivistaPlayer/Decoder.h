@@ -15,7 +15,8 @@ public:
 
 	enum BufferState { EMPTY, NORMAL, FULL };
 
-	struct VideoInfo {
+	struct VideoInfo
+	{
 		bool			isEnabled;
 		int				width;
 		int				height;
@@ -24,7 +25,8 @@ public:
 		BufferState		bufferState;
 	};
 
-	struct AudioInfo {
+	struct AudioInfo
+	{
 		bool			isEnabled;
 		unsigned int	channels;
 		unsigned int	sampleRate;
@@ -33,63 +35,56 @@ public:
 		BufferState		bufferState;
 	};
 
-	bool init(const char* filePath);
-	bool decode();
-	void seek(double time);
-	void destroy();
+	bool Init(const char* filePath);
+	bool Decode();
+	void Seek(double time);
 
-	void streamComponentOpen();
-	VideoInfo getVideoInfo();
-	AudioInfo getAudioInfo();
-	void videoEnable(bool isEnabled);
-	void audioEnable(bool isEnabled);
-	double	getVideoFrame(unsigned char** outputY, unsigned char** outputU, unsigned char** outputV);
-	double	getAudioFrame(unsigned char** outputFrame, int& frameSize);
-	void enableVideo(bool isEnabled);
-	void enableAudio(bool isEnabled);
-	void freeVideoFrame();
-	void freeAudioFrame();
+	void StreamComponentOpen();
+	VideoInfo GetVideoInfo();
+	AudioInfo GetAudioInfo();
+	double	GetVideoFrame(unsigned char** outputY, unsigned char** outputU, unsigned char** outputV);
+	double	GetAudioFrame(unsigned char** outputFrame, int& frameSize);
+	void EnableVideo(bool isEnabled);
+	void EnableAudio(bool isEnabled);
+	void FreeVideoFrame();
+	void FreeAudioFrame();
 
 private:
-	bool					mIsInitialized;
-	bool					mIsAudioAllChEnabled;
-	bool					mUseTCP;
+	bool					isInitialized;
+	bool					isAudioAllChEnabled;
+	bool					useTCP;
 
-	AVFormatContext*		mInputContext;
-	int						mVideoStreamIndex;
-	AVStream*				mVideoStream;
-	int						mAudioStreamIndex;
-	AVStream*				mAudioStream;
-	AVCodec*				mVideoCodec;
-	AVCodec*				mAudioCodec;
-	AVCodecContext*			mVideoCodecContext;
-	AVCodecContext*			mAudioCodecContext;
+	AVFormatContext*		inputContext;
+	int						videoStreamIndex;
+	AVStream*				videoStream;
+	int						audioStreamIndex;
+	AVStream*				audioStream;
+	AVCodec*				videoCodec;
+	AVCodec*				audioCodec;
+	AVCodecContext*			videoCodecContext;
+	AVCodecContext*			audioCodecContext;
 
-	AVPacket				mPacket;
-	std::queue<AVFrame*>	mVideoFrames;
-	std::queue<AVFrame*>	mAudioFrames;
-	unsigned int			mVideoBuffMax;
-	unsigned int			mAudioBuffMax;
+	AVPacket				packet;
+	std::queue<AVFrame*>	videoFrames;
+	std::queue<AVFrame*>	audioFrames;
+	unsigned int			videoBuffMax;
+	unsigned int			audioBuffMax;
 
-	SwrContext*				mSwrContext;
-	int initSwrContext();
+	SwrContext*				swrContext;
 
-	VideoInfo	mVideoInfo;
-	AudioInfo	mAudioInfo;
-	void updateBufferState();
+	VideoInfo				videoInfo;
+	AudioInfo				audioInfo;
 
-	int mFrameBufferNum;
+	std::mutex				videoMutex;
+	std::mutex				audioMutex;
 
-	bool isBuffBlocked();
-	void updateVideoFrame();
-	void updateAudioFrame();
-	void freeFrontFrame(std::queue<AVFrame*>* frameBuff, std::mutex* mutex);
-	void flushBuffer(std::queue<AVFrame*>* frameBuff, std::mutex* mutex);
+	void UpdateBufferState();
 
-	std::mutex				mVideoMutex;
-	std::mutex				mAudioMutex;
-
-	bool mIsSeekToAny;
+	bool IsBuffBlocked();
+	void UpdateVideoFrame();
+	void UpdateAudioFrame();
+	void FreeFrontFrame(std::queue<AVFrame*>* frameBuff, std::mutex* mutex);
+	void FlushBuffer(std::queue<AVFrame*>* frameBuff, std::mutex* mutex);
 };
 
 

@@ -3,8 +3,8 @@
 #include "Manager.h"
 #include "Logger.h"
 
-#include <assert.h>
-#include <math.h>
+#include <cassert>
+#include <cmath>
 #include <vector>
 #include <thread>
 #include <string>
@@ -15,68 +15,21 @@ using namespace std;
 
 typedef struct VideoContext
 {
-	int id = -1;
-	string path = "";
+	string path;
 	thread initThread;
-	shared_ptr<Manager> manager = NULL;
+	Manager* manager = NULL;
 	float progressTime = 0.0f;
 	float lastUpdateTime = -1.0f;
 	bool isContentReady = false;
 } VideoContext;
 
 typedef void(__stdcall* DebugCallback) (const char* str);
-DebugCallback gDebugCallback;
+DebugCallback DebugLogCallback;
 
-list<shared_ptr<VideoContext>> videoContexts;
-typedef list<shared_ptr<VideoContext>>::iterator VideoContextIter;
-
-// --------------------------------------------------------------------------
-// UnitySetInterfaces
-
-static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType eventType);
+VideoContext* videoContext;
 
 static IUnityInterfaces* s_UnityInterfaces = NULL;
 static IUnityGraphics* s_Graphics = NULL;
-
-extern "C" void	UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces * unityInterfaces)
-{
-	s_UnityInterfaces = unityInterfaces;
-	s_Graphics = s_UnityInterfaces->Get<IUnityGraphics>();
-	s_Graphics->RegisterDeviceEventCallback(OnGraphicsDeviceEvent);
-
-#if SUPPORT_VULKAN
-	if (s_Graphics->GetRenderer() == kUnityGfxRendererNull)
-	{
-		extern void RenderAPI_Vulkan_OnPluginLoad(IUnityInterfaces*);
-		RenderAPI_Vulkan_OnPluginLoad(unityInterfaces);
-	}
-#endif // SUPPORT_VULKAN
-
-	// Run OnGraphicsDeviceEvent(initialize) manually on plugin load
-	OnGraphicsDeviceEvent(kUnityGfxDeviceEventInitialize);
-}
-
-extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload()
-{
-	s_Graphics->UnregisterDeviceEventCallback(OnGraphicsDeviceEvent);
-}
-
-#if UNITY_WEBGL
-typedef void	(UNITY_INTERFACE_API* PluginLoadFunc)(IUnityInterfaces* unityInterfaces);
-typedef void	(UNITY_INTERFACE_API* PluginUnloadFunc)();
-
-extern "C" void	UnityRegisterRenderingPlugin(PluginLoadFunc loadPlugin, PluginUnloadFunc unloadPlugin);
-
-extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API RegisterPlugin()
-{
-	UnityRegisterRenderingPlugin(UnityPluginLoad, UnityPluginUnload);
-}
-#endif
-
-// --------------------------------------------------------------------------
-// GraphicsDeviceEvent
-
-
 static RenderAPI* s_CurrentAPI = NULL;
 static UnityGfxRenderer s_DeviceType = kUnityGfxRendererNull;
 
@@ -105,219 +58,172 @@ static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType ev
 	}
 }
 
-// --------------------------------------------------------------------------
-// OnRenderEvent
-// This will be called for GL.IssuePluginEvent script calls; eventID will
-// be the integer passed to IssuePluginEvent. In this example, we just ignore
-// that value.
+extern "C" void	UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces * unityInterfaces)
+{
+	s_UnityInterfaces = unityInterfaces;
+	s_Graphics = s_UnityInterfaces->Get<IUnityGraphics>();
+	s_Graphics->RegisterDeviceEventCallback(OnGraphicsDeviceEvent);
 
-extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API RegisterDebugCallback(DebugCallback callback)
+	// Run OnGraphicsDeviceEvent(initialize) manually on plugin load
+	OnGraphicsDeviceEvent(kUnityGfxDeviceEventInitialize);
+}
+
+extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload()
+{
+	s_Graphics->UnregisterDeviceEventCallback(OnGraphicsDeviceEvent);
+}
+
+extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API RegisterDebugLogCallback(DebugCallback callback)
 {
 	if (callback)
 	{
-		gDebugCallback = callback;
+		DebugLogCallback = callback;
 	}
 }
 
-void DebugInUnity(std::string message)
+void DebugInUnity(char* message)
 {
-	if (gDebugCallback)
+	if (DebugLogCallback)
 	{
-		gDebugCallback(message.c_str());
+		DebugLogCallback(message);
 	}
 }
 
-bool getVideoContext(int id, shared_ptr<VideoContext>& videoCtx) 
-{
-	for (VideoContextIter it = videoContexts.begin(); it != videoContexts.end(); it++) {
-		if ((*it)->id == id) {
-			videoCtx = *it;
-			return true;
-		}
-	}
-	LOG("Decoder does not exist. \n");
-
-	return false;
-}
-
-void removeVideoContext(int id)
-{
-	for (VideoContextIter it = videoContexts.begin(); it != videoContexts.end(); it++)
-	{
-		if ((*it)->id == id) {
-			videoContexts.erase(it);
-			return;
-		}
-	}
-}
-
-static void RenderVideo(int id)
-{
-	shared_ptr<VideoContext> localVideoContext;
-	if (getVideoContext(id, localVideoContext)) 
-	{
-		Manager* localManager = localVideoContext->manager.get();
-
-		if (localManager != NULL &&
-			localManager->GetPlayerState() >= Manager::PlayerState::INITIALIZED)
-		{
-			unsigned int width = localManager->getVideoInfo().width;
-			unsigned int height = localManager->getVideoInfo().height;
-			s_CurrentAPI->Create(width, height);
-
-			double videoDecCurTime = localManager->getVideoInfo().lastTime;
-			LOG("videoDecCurTime = %f \n", videoDecCurTime);
-			if (videoDecCurTime <= localVideoContext->progressTime)
-			{
-				uint8_t* ptrY = NULL;
-				uint8_t* ptrU = NULL;
-				uint8_t* ptrV = NULL;
-				double curFrameTime = localManager->GetVideoFrame(&ptrY, &ptrU, &ptrV);
-
-				if (ptrY != NULL && curFrameTime != -1 && localVideoContext->lastUpdateTime != curFrameTime) {
-					s_CurrentAPI->Upload(ptrY, ptrU, ptrV);
-					localVideoContext->lastUpdateTime = (float)curFrameTime;
-					localVideoContext->isContentReady = true;
-				}
-			}
-			localManager->FreeVideoFrame();
-		}
-	}
-}
-
-static void UNITY_INTERFACE_API OnRenderEvent(int eventID)
+static void UNITY_INTERFACE_API OnRender(int ID)
 {
 	// Unknown / unsupported graphics device type? Do nothing
 	if (s_CurrentAPI == NULL)
 		return;
 
-	RenderVideo(eventID);
+	Manager* localManager = videoContext->manager;
+
+	if (localManager != NULL &&
+		localManager->GetPlayerState() >= Manager::PlayerState::INITIALIZED)
+	{
+		
+		double videoDecCurTime = localManager->getVideoInfo().lastTime;
+		LOG("videoDecCurTime = %f \n", videoDecCurTime);
+		if (videoDecCurTime <= videoContext->progressTime)
+		{
+			uint8_t* ptrY = NULL;
+			uint8_t* ptrU = NULL;
+			uint8_t* ptrV = NULL;
+			double curFrameTime = localManager->GetVideoFrame(&ptrY, &ptrU, &ptrV);
+
+			if (ptrY != NULL && curFrameTime != -1 && videoContext->lastUpdateTime != curFrameTime)
+			{
+				s_CurrentAPI->UploadYUVFrame(ptrY, ptrU, ptrV);
+				videoContext->lastUpdateTime = (float)curFrameTime;
+				videoContext->isContentReady = true;
+			}
+		}
+		localManager->FreeVideoFrame();
+	}
 }
 
-// --------------------------------------------------------------------------
 // GetRenderEventFunc, an example function we export which is used to get a rendering event callback function.
-
 extern "C" UnityRenderingEvent UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API GetRenderEventFunc()
 {
-	return OnRenderEvent;
+	return OnRender;
 }
 
-#pragma region Player
-extern "C" int UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API nativeInitDecoder(const char* path, int& id)
+extern "C" int UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API NativeInitDecoder(const char* path, int& id)
 {
-	LOG("Query available decoder id. \n");
+	videoContext = new VideoContext();
+	videoContext->manager = new Manager();
+	videoContext->path = string(path);
+	videoContext->isContentReady = false;
 
-	int newID = 0;
-	shared_ptr<VideoContext> videoCtx;
-	while (getVideoContext(newID, videoCtx)) 
-	{
-		newID++; 
-	}
-
-	videoCtx = make_shared<VideoContext>();
-	videoCtx->manager = make_shared<Manager>();
-	videoCtx->id = newID;
-	id = videoCtx->id;
-	videoCtx->path = string(path);
-	videoCtx->isContentReady = false;
-
-	videoCtx->initThread = thread([videoCtx]() {
-		videoCtx->manager->Init(videoCtx->path.c_str());
+	videoContext->initThread = thread([]{
+		videoContext->manager->Init(videoContext->path.c_str());
+		unsigned int width = videoContext->manager->getVideoInfo().width;
+		unsigned int height = videoContext->manager->getVideoInfo().height;
+		s_CurrentAPI->Create(width, height);
 	});
-
-	videoContexts.push_back(videoCtx);
 
 	return 0;
 }
 
-// GetPlayerState, get the current state of the player
-extern "C" int UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API nativeGetPlayerState(int id) 
+extern "C" int UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API NativeGetPlayerState()
 {
-	shared_ptr<VideoContext> videoCtx;
-
-	if (!getVideoContext(id, videoCtx) || videoCtx->manager == NULL) { 
+	if (videoContext->manager == NULL)
+	{
 		return -1;
 	}
 
-	return videoCtx->manager->GetPlayerState();
+	return videoContext->manager->GetPlayerState();
 }
 
-// --------------------------------------------------------------------------
-// CreateTexture, create a new texture resource on the supported graphic device
-extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API CreateTexture(int id, void*& tex0, void*& tex1, void*& tex2)
+extern "C" bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API NativeCreateTexture(void** tex0, void** tex1, void** tex2)
 {
-	shared_ptr<VideoContext> videoCtx;
-	if (!getVideoContext(id, videoCtx)) 
+	if (tex0 == nullptr || tex1 == nullptr || tex2 == nullptr)
 	{
-		return;
+		return false;
 	}
 
-	s_CurrentAPI->getResourcePointers(tex0, tex1, tex2);
+	s_CurrentAPI->GetResourcePointers(tex0, tex1, tex2);
+	return true;
 }
 
-// TODO Start playing
-extern "C" bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API nativeStart(int id)
+extern "C" bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API NativeStart()
 {
-	shared_ptr<VideoContext> videoCtx;
-
-	if (!getVideoContext(id, videoCtx) || videoCtx->manager == NULL)
-	{ 
-		return false; 
+	if (videoContext->manager == NULL)
+	{
+		return false;
 	}
 
-	if (videoCtx->initThread.joinable()) {
-		videoCtx->initThread.join();
+	if (videoContext->initThread.joinable())
+	{
+		videoContext->initThread.join();
 	}
 
-	auto localManager = videoCtx->manager;
+	Manager* localManager = videoContext->manager;
 	if (localManager->GetPlayerState() >= Manager::PlayerState::INITIALIZED)
 	{
 		localManager->Start();
 	}
 
-	if (!localManager->getVideoInfo().isEnabled) {
-		videoCtx->isContentReady = true;
+	if (!localManager->getVideoInfo().isEnabled)
+	{
+		videoContext->isContentReady = true;
 	}
 
 	return true;
 }
 
-// TODO destroy
-extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API nativeDestroy(int id)
+extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API NativeDestroy()
 {
-	shared_ptr<VideoContext> videoCtx;
-
-	if (!getVideoContext(id, videoCtx)) { 
-		return;
+	if (videoContext->initThread.joinable())
+	{
+		videoContext->initThread.join();
 	}
 
-	if (videoCtx->initThread.joinable()) {
-		videoCtx->initThread.join();
-	}
-
-	videoCtx->manager = NULL;
-	videoCtx->path.clear();
-	videoCtx->progressTime = 0.0f;
-	videoCtx->lastUpdateTime = 0.0f;
-	videoCtx->isContentReady = false;
-
-	removeVideoContext(videoCtx->id);
-	videoCtx->id = -1;
+	videoContext->manager = NULL;
+	videoContext->path.clear();
+	videoContext->progressTime = 0.0f;
+	videoContext->lastUpdateTime = 0.0f;
+	videoContext->isContentReady = false;
 }
 
-extern "C" bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API nativeIsEOF(int id) 
+extern "C" bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API NativeIsEOF(int id)
 {
-	shared_ptr<VideoContext> videoCtx;
-	if (!getVideoContext(id, videoCtx) || videoCtx->manager == NULL)
+	if (videoContext->manager == NULL)
 	{
 		return true;
 	}
 
-	return videoCtx->manager->GetPlayerState() == Manager::PlayerState::PLAY_EOF;
+	return videoContext->manager->GetPlayerState() == Manager::PlayerState::PLAY_EOF;
 }
 
-#pragma endregion
+extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API SetTimeFromUnity(float time)
+{
 
+}
+
+extern "C" Decoder::VideoInfo UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API NativeGetVideoInfo()
+{
+	return videoContext->manager->getVideoInfo();
+}
 
 #pragma region Video
 

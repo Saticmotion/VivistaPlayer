@@ -4,96 +4,85 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using UnityEngine.Video;
+
+public class Yield
+{
+	public static WaitForEndOfFrame endOfFrame = new WaitForEndOfFrame();
+}
+
+public enum BufferState
+{
+	Empty,
+	Normal,
+	Full
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct VideoInfo
+{
+	public bool isEnabled;
+	public int width;
+	public int height;
+	public double lastTime;
+	public double totalTime;
+	public BufferState bufferState;
+}
 
 public class VivistaPlayer : MonoBehaviour
 {
-    // Native plugin rendering events are only called if a plugin is used
-    // by some script. This means we have to DllImport at least
-    // one function in some active script.
-    // For this example, we'll call into plugin's SetTimeFromUnity
-    // function and pass the current time so the plugin can animate.
+	// Native plugin rendering events are only called if a plugin is used
+	// by some script. This means we have to DllImport at least
+	// one function in some active script.
+	// For this example, we'll call into plugin's SetTimeFromUnity
+	// function and pass the current time so the plugin can animate.
 
-    //#if (UNITY_IOS || UNITY_TVOS || UNITY_WEBGL) && !UNITY_EDITOR
-    //	[DllImport ("__Internal")]
-    //#else
-    //	[DllImport("VivistaPlayer")]
-    //#endif
-    //	private static extern void SetTimeFromUnity(float t);
+	[DllImport("VivistaPlayer")]
+	private static extern void SetTimeFromUnity(float t);
 
-    // We'll also pass native pointer to a texture in Unity.
-    // The plugin will fill texture data from native code.
-    //#if (UNITY_IOS || UNITY_TVOS || UNITY_WEBGL) && !UNITY_EDITOR
-    //	[DllImport ("__Internal")]
-    //#else
-    //	[DllImport("VivistaPlayer")]
-    //#endif
-    //    private static extern void SetTextureFromUnity(IntPtr texture, int w, int h);
+	[DllImport("VivistaPlayer")]
+	private static extern void DestroyDecoderNative();
 
-    //#if (UNITY_IOS || UNITY_TVOS || UNITY_WEBGL) && !UNITY_EDITOR
-    //	[DllImport ("__Internal")]
-    //#else
-    //	[DllImport("VivistaPlayer")]
-    //#endif
-    //	private static extern void DestroyDecoderNative();
+	[DllImport("VivistaPlayer")]
+	private static extern void SetVideoDisabledNative(bool status);
 
-    //#if (UNITY_IOS || UNITY_TVOS || UNITY_WEBGL) && !UNITY_EDITOR
-    //	[DllImport ("__Internal")]
-    //#else
-    //	[DllImport("VivistaPlayer")]
-    //#endif
-    //	private static extern void setVideoDisabledNative(bool status);
+	[DllImport("VivistaPlayer")]
+	private static extern void SetAudioDisabledNative(bool status);
 
-    //#if (UNITY_IOS || UNITY_TVOS || UNITY_WEBGL) && !UNITY_EDITOR
-    //	[DllImport ("__Internal")]
-    //#else
-    //	[DllImport("VivistaPlayer")]
-    //#endif
-    //	private static extern void setAudioDisabledNative(bool status);
-
-#if (UNITY_IOS || UNITY_TVOS || UNITY_WEBGL) && !UNITY_EDITOR
-	[DllImport ("__Internal")]
-#else
-    [DllImport("VivistaPlayer")]
-#endif
+	[DllImport("VivistaPlayer")]
 	private static extern IntPtr GetRenderEventFunc();
 
-#if (UNITY_IOS || UNITY_TVOS || UNITY_WEBGL) && !UNITY_EDITOR
-	[DllImport ("__Internal")]
-#else
 	[DllImport("VivistaPlayer")]
-#endif
-	private static extern void nativeInitDecoder(string path, ref int id);
+	private static extern bool NativeCreateTexture(ref IntPtr y, ref IntPtr u, ref IntPtr v);
 
-#if (UNITY_IOS || UNITY_TVOS || UNITY_WEBGL) && !UNITY_EDITOR
-		[DllImport ("__Internal")]
-#else
-    [DllImport("VivistaPlayer")]
-#endif
-    private static extern int nativeGetPlayerState(int id);
+	[DllImport("VivistaPlayer")]
+	private static extern void NativeInitDecoder(string path, ref int id);
+
+	[DllImport("VivistaPlayer")]
+	private static extern int NativeGetPlayerState(int id);
+
+	[DllImport("VivistaPlayer")]
+	private static extern bool NativeStart();
+
+	[DllImport("VivistaPlayer")]
+	private static extern VideoInfo NativeGetVideoInfo();
+
+	[DllImport("VivistaPlayer")]
+	private static extern void RegisterDebugLogCallback(DebugLogCallback logCallback);
+	private delegate void DebugLogCallback(string message);
 
 #if !UNITY_EDITOR
 	[DllImport ("__Internal")]
 	private static extern void RegisterPlugin();
 #endif
 
-    #region Public Variables
-    /**
-	 * Whether the content will start playing as soon as the component
-	 * awakes.
-	 */
-    public bool playOnAwake = false;
-	/**
-	 * 	The file or HTTP URL that the videoplayer reads content from.
-	 */
+	public bool playOnAwake = false;
 	public string url = null;
-	/**
-	 * 	Playback speed of the video.
-	 */
-	public float playback = 1.0f;
+	public float playbackSpeed = 1.0f;
 
-	public enum PlayerState 
+	public enum PlayerState
 	{
-		NOT_INITIALIZED,
+		NotInitialized,
 		INTIALIZING,
 		INITIALIZED,
 		PLAY,
@@ -104,25 +93,12 @@ public class VivistaPlayer : MonoBehaviour
 		EOF
 	}
 
-	#region Events
-	/**
-	 * Invoked when the videoplayer is succesfully initialized.
-	 */
-	public UnityEvent prepareCompleted = null;
-	public UnityEvent started = null;
+	public UnityEvent prepareCompleted;
+	public UnityEvent started;
 
-	#endregion
+	private int decoderId = -1;
 
-	#endregion
-	#region Private Variables
-	private int decoderID = -1;
-
-	/**
-	 * Invoked when the video has finished playing.
-	*/
-	private UnityEvent loopPointReached = null;
-
-	private const string LOG_TAG = "[VivistaPlayer]";
+	private UnityEvent loopPointReached;
 
 	// Video
 	private int videoWidth = -1;
@@ -136,48 +112,44 @@ public class VivistaPlayer : MonoBehaviour
 	private bool audioDisabled = false;
 
 	private AudioSource[] audioSources = new AudioSource[SWAP_BUFFER_NUM];
-	private List<float> audioBuffer = null;
+	private List<float> audioBuffer;
 
 	private float volume;
 
 	// Player
-	private PlayerState lastState = VivistaPlayer.PlayerState.NOT_INITIALIZED;
-	private PlayerState playerState = VivistaPlayer.PlayerState.NOT_INITIALIZED;
+	private PlayerState lastState = PlayerState.NotInitialized;
+	private PlayerState playerState = PlayerState.NotInitialized;
 
-	private Texture2D videoTexY = null;
-	private Texture2D videoTexU = null;
-	private Texture2D videoTexV = null;
-    #endregion
+	private Texture2D videoTexY;
+	private Texture2D videoTexU;
+	private Texture2D videoTexV;
 
-    #region Lifecycle Unity
-    // Start is called before the first frame update
-    void Start()
+	private IntPtr renderEventFunc;
+
+	private void Start()
 	{
 #if !UNITY_EDITOR
 		RegisterPlugin();
 #endif
 		//CreateTextureAndPassToPlugin();
 		//yield return StartCoroutine("CallPluginAtEndOfFrames");
-		GL.IssuePluginEvent(GetRenderEventFunc(), 1);
+		renderEventFunc = GetRenderEventFunc();
+		GL.IssuePluginEvent(renderEventFunc, 1);
 
-		RegisterDebugCallback(new DebugCallback(DebugMethod));
+		RegisterDebugLogCallback(DebugLog);
 	}
 
-	void Awake() 
+	private void Awake()
 	{
-		if (playOnAwake) 
+		if (playOnAwake)
 		{
-			print(LOG_TAG + " play on awake");
-			if (prepareCompleted == null)
-			{
-				prepareCompleted = new UnityEvent();
-			}
-			prepareCompleted.AddListener(startDecoding);
-			prepare(url);
+			DebugLog("play on awake");
+			prepareCompleted.AddListener(StartDecoding);
+			Prepare(url);
 		}
 	}
 
-	void Update()
+	private void Update()
 	{
 		switch (playerState)
 		{
@@ -195,150 +167,168 @@ public class VivistaPlayer : MonoBehaviour
 				break;
 		}
 	}
-    #endregion
 
-    #region Private Methods
-    private void prepare(string path)
+	private void Prepare(string path)
 	{
-		StartCoroutine(initDecoder(path));
+		StartCoroutine(InitDecoder(path));
 	}
 
-	IEnumerator initDecoder(string path)
+	private IEnumerator InitDecoder(string path)
 	{
-		print(LOG_TAG + " init Decoder.");
+		DebugLog("init Decoder");
 		playerState = PlayerState.INTIALIZING;
 
 		url = path;
-		decoderID = -1;
-		nativeInitDecoder(path, ref decoderID);
+		decoderId = -1;
+		NativeInitDecoder(path, ref decoderId);
 
-		int result = 0;
+		var videoInfo = NativeGetVideoInfo();
+		videoWidth = videoInfo.width;
+		videoHeight = videoInfo.height;
+
+		CreateTextures();
+
+		int result;
 		do
 		{
 			yield return null;
-			result = nativeGetPlayerState(decoderID);
-		} while (!(result == 1 || result == -1));
+			result = NativeGetPlayerState(decoderId);
+		}
+		while (result != 1 && result != -1);
 
-		if (result == 1) 
+		if (result == 1)
 		{
-			print(LOG_TAG + "Init success.");
+			prepareCompleted.Invoke();
+			DebugLog("Init success");
+		}
+		if (result == -1)
+		{
+			DebugLog("Init failed");
 		}
 	}
 
-    //IEnumerator InitDecoderAsync(string path)
-    //{ 
-    //	print(LOG_TAG + " init Decoder.");
-    //	playerState = PlayerState.INTIALIZING;
-    //	url = path;
+	private IEnumerator InitDecoderAsync(string path)
+	{
+		DebugLog("init Decoder Async");
+		playerState = PlayerState.INTIALIZING;
+		url = path;
 
-    //	InitDecoderNative(url);
+		decoderId = -1;
+		NativeInitDecoder(url, ref decoderId);
 
-    //	// Check init decoder state;
+		// Check init decoder state;
 
-    //	// Check video enabled;
-    //	if (!videoDisabled)
-    //	{ 
+		// Check video enabled;
+		if (!videoDisabled)
+		{
 
-    //	}
+		}
 
-    //	// Check audio enabled;
-    //	if (!audioDisabled)
-    //	{
+		// Check audio enabled;
+		if (!audioDisabled)
+		{
 
-    //	}
+		}
 
-    //	playerState = PlayerState.INITIALIZED;
+		playerState = PlayerState.INITIALIZED;
 
-    //	return null;
-    //}
-
-    //private void CreateTextures()
-    //{
-    //	ReleaseTextures();
-
-    //	IntPtr nativeTexturePtrY = new IntPtr();
-    //	IntPtr nativeTexturePtrU = new IntPtr();
-    //	IntPtr nativeTexturePtrV = new IntPtr();
-
-    //	nativeCreateTexture(ref nativeTexturePtrY, ref nativeTexturePtrU, ref nativeTexturePtrV);
-
-    //	videoTexY = Texture2D.CreateExternalTexture(
-    //		videoWidth, videoHeight, TextureFormat.Alpha8, false, false, nativeTexturePtrY);
-    //	videoTexU = Texture2D.CreateExternalTexture(
-    //		videoWidth / 2, videoHeight / 2, TextureFormat.Alpha8, false, false, nativeTexturePtrU);
-    //	videoTexV = Texture2D.CreateExternalTexture(
-    //		videoWidth / 2, videoHeight / 2, TextureFormat.Alpha8, false, false, nativeTexturePtrV);
-    //}
-
-    //private void ReleaseTextures()
-    //{
-    //	setTextures(null, null, null);
-
-    //	videoTexY = null;
-    //	videoTexU = null;
-    //	videoTexV = null;
-
-    //	useDefault = true;
-    //}
-
-    //private void setTextures(Texture ytex, Texture utex, Texture vtex)
-    //{
-    //	Material texMat = GetComponent<MeshRenderer>().material;
-    //	texMat.SetTexture("_YTex", ytex);
-    //	texMat.SetTexture("_UTex", utex);
-    //	texMat.SetTexture("_VTex", vtex);
-    //}
-
-    #endregion
-
-    #region Public Methods
-
-    public void startDecoding()
-	{ 
-		
+		return null;
 	}
 
-	//public void DisableVideo(bool status) 
-	//{
-	//	setVideoDisabledNative(status);
-	//}
-
-	//public void DisableAudio(bool status)
-	//{
-	//	setAudioDisabledNative(status);
-	//}
-
-	//public void mute()
-	//{ 
-
-	//}
-
-	//private IEnumerator CallPluginAtEndOfFrames()
-	//{
-	//	while (true)
-	//	{
-	//		// Wait until all frame rendering is done
-	//		yield return new WaitForEndOfFrame();
-
-	//		// Set time for the plugin
-	//		SetTimeFromUnity(Time.timeSinceLevelLoad);
-
-	//		// Issue a plugin event with arbitrary integer identifier.
-	//		// The plugin can distinguish between different
-	//		// things it needs to do based on this ID.
-	//		// For our simple plugin, it does not matter which ID we pass here.
-	//		GL.IssuePluginEvent(GetRenderEventFunc(), 1);
-	//	}
-	//}
-
-	#endregion
-
-	private delegate void DebugCallback(string message);
-	[DllImport("VivistaPlayer")]
-	private static extern void RegisterDebugCallback(DebugCallback callback);
-
-	private static void DebugMethod(string message)
+	private void CreateTextures()
 	{
-		Debug.Log("VivistaPlayer: " + message);
+		ReleaseTextures();
+
+		var nativeTexY = new IntPtr();
+		var nativeTexU = new IntPtr();
+		var nativeTexV = new IntPtr();
+
+		var material = GetComponent<MeshRenderer>().sharedMaterial;
+
+		if (NativeCreateTexture(ref nativeTexY, ref nativeTexU, ref nativeTexV))
+		{
+			if (nativeTexY != IntPtr.Zero)
+			{
+				videoTexY = Texture2D.CreateExternalTexture(videoWidth, videoHeight, TextureFormat.Alpha8, false, false, nativeTexY);
+				material.SetTexture("_YTex", videoTexY);
+			}
+			if (nativeTexU != IntPtr.Zero)
+			{
+				videoTexU = Texture2D.CreateExternalTexture(videoWidth / 2, videoHeight / 2, TextureFormat.Alpha8, false, false, nativeTexU);
+				material.SetTexture("_UTex", videoTexU);
+			}
+			if (nativeTexV != IntPtr.Zero)
+			{
+				videoTexV = Texture2D.CreateExternalTexture(videoWidth / 2, videoHeight / 2, TextureFormat.Alpha8, false, false, nativeTexV);
+				material.SetTexture("_VTex", videoTexV);
+			}
+		}
+		else
+		{
+			DebugLog("Failed to create native textures");
+		}
+	}
+
+	private void ReleaseTextures()
+	{
+		SetTextures(null, null, null);
+
+		videoTexY = null;
+		videoTexU = null;
+		videoTexV = null;
+	}
+
+	private void SetTextures(Texture ytex, Texture utex, Texture vtex)
+	{
+		var texMat = GetComponent<MeshRenderer>().material;
+		texMat.SetTexture("_YTex", ytex);
+		texMat.SetTexture("_UTex", utex);
+		texMat.SetTexture("_VTex", vtex);
+	}
+
+	public void StartDecoding()
+	{
+		if (!NativeStart())
+		{
+			DebugLog("Failed to start video");
+		}
+		else
+		{
+			DebugLog("Started video playback");
+		}
+
+		StartCoroutine(CallPluginAtEndOfFrames());
+	}
+
+	public void DisableVideo(bool status)
+	{
+		SetVideoDisabledNative(status);
+	}
+
+	public void DisableAudio(bool status)
+	{
+		SetAudioDisabledNative(status);
+	}
+
+	public void Mute()
+	{
+
+	}
+
+	private IEnumerator CallPluginAtEndOfFrames()
+	{
+		while (true)
+		{
+			yield return Yield.endOfFrame;
+
+			SetTimeFromUnity(Time.timeSinceLevelLoad);
+
+			GL.IssuePluginEvent(renderEventFunc, 1);
+		}
+	}
+
+	private static void DebugLog(string message)
+	{
+		Debug.Log($"[VivistaPlayer] {message}");
 	}
 }

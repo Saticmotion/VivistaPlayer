@@ -315,7 +315,7 @@
 //
 //	// TODO take packet of queue
 //
-//	if (avcodec_decode_video2(videoState->video_ctx, frame, &isFrameAvailable, &mPacket) < 0) {
+//	if (avcodec_decode_video2(videoState->video_ctx, frame, &isFrameAvailable, &packet) < 0) {
 //		return;
 //	}
 //
@@ -348,13 +348,13 @@
 //	{
 //		return;
 //	}
-//	if (avcodec_decode_audio4(videoState, frameDecoded, &isFrameAvailable, &mPacket) < 0) {
+//	if (avcodec_decode_audio4(videoState, frameDecoded, &isFrameAvailable, &packet) < 0) {
 //		return;
 //	}
 //
 //	AVFrame* frame = av_frame_alloc();
 //	frame->sample_rate = frameDecoded->sample_rate;
-//	frame->channel_layout = av_get_default_channel_layout(mAudioInfo.channels);
+//	frame->channel_layout = av_get_default_channel_layout(audioInfo.channels);
 //	frame->format = AV_SAMPLE_FMT_FLT;	//	For Unity format.
 //	frame->best_effort_timestamp = frameDecoded->best_effort_timestamp;
 //	swr_convert_frame(videoState->swr_ctx, frame, frameDecoded);

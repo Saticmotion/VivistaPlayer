@@ -765,8 +765,8 @@
 //		videoState->video_st = pFormatCtx->streams[stream_index];
 //		videoState->video_ctx = codecCtx;
 //
-//		// Don't forget to initialize the frame timer and the initial
-//		// previous frame delay: 1ms = 1e-6s
+//		 Don't forget to initialize the frame timer and the initial
+//		 previous frame delay: 1ms = 1e-6s
 //		videoState->frame_timer = (double)av_gettime() / 1000000.0;
 //		videoState->frame_last_delay = 40e-3;
 //		videoState->video_current_pts_time = av_gettime();

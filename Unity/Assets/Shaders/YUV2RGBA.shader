@@ -22,7 +22,6 @@ Shader "Unlit/YUV2RGBA"
 			#pragma vertex vert
 			#pragma fragment frag
 			// make fog work
-			#pragma multi_compile_fog
 			
 			#include "UnityCG.cginc"
 
@@ -49,28 +48,35 @@ Shader "Unlit/YUV2RGBA"
 			{
 				v2f o;
 				o.vertex = UnityObjectToClipPos(v.vertex);
-				o.uv = TRANSFORM_TEX(float2(v.uv.x, 1.0 - v.uv.y), _MainTex);
-				UNITY_TRANSFER_FOG(o,o.vertex);
+				o.uv = v.uv;//TRANSFORM_TEX(float2(v.uv.x, v.uv.y), _MainTex);
 				return o;
 			}
 			
 			fixed4 frag (v2f i) : SV_Target
 			{
+				//float ych = tex2D(_YTex, i.uv).a;
+				//float uch = tex2D(_UTex, i.uv).a * 0.872 - 0.436;		//	Scale from 0 ~ 1 to -0.436 ~ +0.436
+				//float vch = tex2D(_VTex, i.uv).a * 1.230 - 0.615;		//	Scale from 0 ~ 1 to -0.615 ~ +0.615
+				///*	BT.601	*/
+				//float rch = ych + 1.13983 * vch;
+				//float gch = ych - 0.39465 * uch - 0.58060 * vch;
+				//float bch = ych + 2.03211 * uch;
+
 				float ych = tex2D(_YTex, i.uv).a;
-				float uch = tex2D(_UTex, i.uv).a * 0.872 - 0.436;		//	Scale from 0 ~ 1 to -0.436 ~ +0.436
-				float vch = tex2D(_VTex, i.uv).a * 1.230 - 0.615;		//	Scale from 0 ~ 1 to -0.615 ~ +0.615
-				/*	BT.601	*/
-				float rch = ych + 1.13983 * vch;
-				float gch = ych - 0.39465 * uch - 0.58060 * vch;
-				float bch = ych + 2.03211 * uch;
-				
+				float uch = tex2D(_UTex, i.uv).a - 0.5;
+				float vch = tex2D(_VTex, i.uv).a - 0.5;
+
+				float rch = 2 * (ych / 2 + 1.402 / 2 * uch);
+				float gch = 2 * (ych / 2 - 0.344136 * vch / 2 - 0.714136 * uch / 2);
+				float bch = 2 * (ych / 2 + 1.773 / 2 * vch);
+
 				fixed4 col = clamp(fixed4(rch, gch, bch, 1.0), 0.0, 1.0);
+				//fixed4 col = clamp(fixed4(gch, bch, gch, 1.0), 0.0, 1.0);
 
 				if(!IsGammaSpace()) {	//	If linear space.
 					col = pow(col, 2.2);
 				}
 
-				UNITY_APPLY_FOG(i.fogCoord, col);
 				return col;
 			}
 			ENDCG
