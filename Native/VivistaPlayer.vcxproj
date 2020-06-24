@@ -149,7 +149,6 @@ ENDLOCAL</Command>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="VivistaPlayer\clock.c" />
     <ClCompile Include="VivistaPlayer\Decoder.c" />
     <ClCompile Include="VivistaPlayer\Decoder.cpp" />
     <ClCompile Include="VivistaPlayer\Logger.cpp" />
@@ -162,7 +161,6 @@ ENDLOCAL</Command>
     <ClCompile Include="VivistaPlayer\VivistaPlayer.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="VivistaPlayer\clock.h" />
     <ClInclude Include="VivistaPlayer\Decoder.h" />
     <ClInclude Include="VivistaPlayer\Logger.h" />
     <ClInclude Include="VivistaPlayer\Manager.h" />

@@ -23,10 +23,8 @@ public:
 
 	virtual bool GetUsesReverseZ() { return (int)device->GetFeatureLevel() >= (int)D3D_FEATURE_LEVEL_10_0; }
 
-	virtual void Create(int textureWidth, int textureHeight);
+	virtual void Create(int textureWidth, int textureHeight, void** ptry, void** ptru, void** ptrv);
 	virtual void UploadYUVFrame(unsigned char* ych, unsigned char* uch, unsigned char* vch);
-
-	virtual void GetResourcePointers(void** ptry, void** ptru, void** ptrv);
 
 private:
 	void CreateResources();
@@ -108,7 +106,7 @@ void RenderAPI_D3D11::ReleaseResources()
 	}
 }
 
-void RenderAPI_D3D11::Create(int textureWidth, int textureHeight)
+void RenderAPI_D3D11::Create(int textureWidth, int textureHeight, void** ptry, void** ptru, void** ptrv)
 {
 	widthY = (unsigned int)(ceil((float)textureWidth / 64) * 64);
 	heightY = textureHeight;
@@ -147,14 +145,18 @@ void RenderAPI_D3D11::Create(int textureWidth, int textureHeight)
 	result = device->CreateTexture2D(&textDesc, NULL, &textures[1]);
 	if (FAILED(result)) { LOG("Create texture U fail. Error code: %x\n", result); }
 
-	result = device->CreateShaderResourceView(textures[0], &shaderResourceViewDesc, &shaderResourceView[1]);
+	result = device->CreateShaderResourceView(textures[1], &shaderResourceViewDesc, &shaderResourceView[1]);
 	if (FAILED(result)) { LOG("Create shader resource view U fail. Error code: %x\n", result); }
 
 	result = device->CreateTexture2D(&textDesc, NULL, &textures[2]);
 	if (FAILED(result)) { LOG("Create texture V fail. Error code: %x\n", result); }
 
-	result = device->CreateShaderResourceView(textures[0], &shaderResourceViewDesc, &shaderResourceView[2]);
+	result = device->CreateShaderResourceView(textures[2], &shaderResourceViewDesc, &shaderResourceView[2]);
 	if (FAILED(result)) { LOG("Create shader resource view V fail. %x\n", result); }
+
+	*ptry = shaderResourceView[0];
+	*ptru = shaderResourceView[1];
+	*ptrv = shaderResourceView[2];
 }
 
 void RenderAPI_D3D11::UploadYUVFrame(unsigned char* ych, unsigned char* uch, unsigned char* vch)
@@ -171,24 +173,19 @@ void RenderAPI_D3D11::UploadYUVFrame(unsigned char* ych, unsigned char* uch, uns
 	for (int i = 0; i < TEXTURE_NUM; i++)
 	{
 		ZeroMemory(&(mappedResource[i]), sizeof(D3D11_MAPPED_SUBRESOURCE));
-		ctx->Map(textures[i], 0, D3D11_MAP_WRITE_DISCARD, 0, &(mappedResource[i]));
 	}
 
+
+	ctx->Map(textures[0], 0, D3D11_MAP_WRITE_DISCARD, 0, &(mappedResource[0]));
 	UINT rowPitchY = mappedResource[0].RowPitch;
-	UINT rowPitchUV = mappedResource[1].RowPitch;
-
-	uint8_t* ptrMappedY = (uint8_t*)(mappedResource[0].pData);
-	uint8_t* ptrMappedU = (uint8_t*)(mappedResource[1].pData);
-	uint8_t* ptrMappedV = (uint8_t*)(mappedResource[2].pData);
-
-	//	Map region has its own row pitch which may different to texture width.
 	if (widthY == rowPitchY)
 	{
+		uint8_t* ptrMappedY = (uint8_t*)(mappedResource[0].pData);
 		memcpy(ptrMappedY, ych, lengthY);
 	}
 	else
 	{
-		//	Handle rowpitch of mapped memory.
+		uint8_t* ptrMappedY = (uint8_t*)(mappedResource[0].pData);
 		uint8_t* end = ych + lengthY;
 		while (ych != end)
 		{
@@ -197,45 +194,57 @@ void RenderAPI_D3D11::UploadYUVFrame(unsigned char* ych, unsigned char* uch, uns
 			ptrMappedY += rowPitchY;
 		}
 	}
+	ctx->Unmap(textures[0], 0);
 
-	if (widthUV == rowPitchUV)
+
+
+	ctx->Map(textures[1], 0, D3D11_MAP_WRITE_DISCARD, 0, &(mappedResource[1]));
+	UINT rowPitchU = mappedResource[1].RowPitch;
+	if (widthUV == rowPitchU)
 	{
+		uint8_t* ptrMappedU = (uint8_t*)(mappedResource[1].pData);
 		memcpy(ptrMappedU, uch, lengthUV);
+	}
+	else
+	{
+		uint8_t* endU = uch + lengthUV;
+		uint8_t* ptrMappedU = (uint8_t*)(mappedResource[1].pData);
+		while (uch != endU)
+		{
+			memcpy(ptrMappedU, uch, widthUV);
+
+			uch += widthUV;
+			ptrMappedU += rowPitchU;
+		}
+	}
+	ctx->Unmap(textures[1], 0);
+
+	ctx->Map(textures[2], 0, D3D11_MAP_WRITE_DISCARD, 0, &(mappedResource[2]));
+	UINT rowPitchV = mappedResource[2].RowPitch;
+	if (widthUV == rowPitchV)
+	{
+		uint8_t* ptrMappedV = (uint8_t*)(mappedResource[2].pData);
 		memcpy(ptrMappedV, vch, lengthUV);
 	}
 	else
 	{
-		//	Handle rowpitch of mapped memory.
-		//	YUV420, length U == length V
-		uint8_t* endU = uch + lengthUV;
-		while (uch != endU)
+		uint8_t* endV = vch + lengthUV;
+		uint8_t* ptrMappedV = (uint8_t*)(mappedResource[2].pData);
+		while (vch != endV)
 		{
-			memcpy(ptrMappedU, uch, widthUV);
 			memcpy(ptrMappedV, vch, widthUV);
-			uch += widthUV;
 			vch += widthUV;
-			ptrMappedU += rowPitchUV;
-			ptrMappedV += rowPitchUV;
+			ptrMappedV += rowPitchV;
 		}
 	}
+	ctx->Unmap(textures[2], 0);
 
 	for (int i = 0; i < TEXTURE_NUM; i++)
 	{
-		ctx->Unmap(textures[i], 0);
+		//ctx->Unmap(textures[i], 0);
 	}
+
 	ctx->Release();
-}
-
-void RenderAPI_D3D11::GetResourcePointers(void** ptry, void** ptru, void** ptrv)
-{
-	if (device == NULL)
-	{
-		return;
-	}
-
-	*ptry = shaderResourceView[0];
-	*ptru = shaderResourceView[1];
-	*ptrv = shaderResourceView[2];
 }
 
 #endif // #if SUPPORT_D3D11

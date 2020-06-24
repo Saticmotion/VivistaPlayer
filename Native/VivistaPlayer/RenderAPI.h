@@ -9,7 +9,6 @@ struct IUnityInterface;
 class RenderAPI
 {
 public:
-	//virtual	~RenderAPI();
 	// Process general event like initialization, shutdown, device loss/reset etc.
 	virtual void ProcessDeviceEvent(UnityGfxDeviceEventType type, IUnityInterfaces* interfaces) = 0;
 
@@ -21,13 +20,10 @@ public:
 	// (e.g. OpenGL ES) do not have a good way to query that from the texture itself...
 	//
 	// Returns pointer into the data buffer to write into (or NULL on failure), and pitch in bytes of a single texture row.
-	virtual void Create(int textureWidth, int textureHeight) = 0;
+	virtual void Create(int textureWidth, int textureHeight, void** ptry, void** ptru, void** ptrv) = 0;
 
 	// Upload new texture data to an existing texture resource.
 	virtual void UploadYUVFrame(unsigned char* ych, unsigned char* uch, unsigned char* vch) = 0;
-
-	// Get pointers to texture resources.
-	virtual void GetResourcePointers(void** ptry, void** ptru, void** ptrv) = 0;
 };
 
 RenderAPI* CreateRenderAPI(UnityGfxRenderer apiType);

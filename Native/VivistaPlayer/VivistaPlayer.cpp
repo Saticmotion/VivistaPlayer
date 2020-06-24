@@ -71,6 +71,7 @@ extern "C" void	UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnit
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload()
 {
 	s_Graphics->UnregisterDeviceEventCallback(OnGraphicsDeviceEvent);
+	//NOTE(Simon): No further cleanup required; happens only on program exit
 }
 
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API RegisterDebugLogCallback(DebugCallback callback)
@@ -89,20 +90,18 @@ void DebugInUnity(char* message)
 	}
 }
 
-static void UNITY_INTERFACE_API OnRender(int ID)
+//NOTE(Simon): This callback's signature needs the ID parameter
+static void UNITY_INTERFACE_API Update(int ID)
 {
-	// Unknown / unsupported graphics device type? Do nothing
 	if (s_CurrentAPI == NULL)
 		return;
 
 	Manager* localManager = videoContext->manager;
 
-	if (localManager != NULL &&
-		localManager->GetPlayerState() >= Manager::PlayerState::INITIALIZED)
+	if (localManager != NULL &&	localManager->GetPlayerState() >= Manager::PlayerState::INITIALIZED)
 	{
-		
 		double videoDecCurTime = localManager->getVideoInfo().lastTime;
-		LOG("videoDecCurTime = %f \n", videoDecCurTime);
+
 		if (videoDecCurTime <= videoContext->progressTime)
 		{
 			uint8_t* ptrY = NULL;
@@ -116,15 +115,15 @@ static void UNITY_INTERFACE_API OnRender(int ID)
 				videoContext->lastUpdateTime = (float)curFrameTime;
 				videoContext->isContentReady = true;
 			}
+			localManager->FreeVideoFrame();
 		}
-		localManager->FreeVideoFrame();
 	}
 }
 
-// GetRenderEventFunc, an example function we export which is used to get a rendering event callback function.
-extern "C" UnityRenderingEvent UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API GetRenderEventFunc()
+//NOTE(Simon): We need to call into the library's update through a callback. It gets called on a separate thread in Unity
+extern "C" UnityRenderingEvent UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API GetUpdateFunc()
 {
-	return OnRender;
+	return Update;
 }
 
 extern "C" int UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API NativeInitDecoder(const char* path, int& id)
@@ -136,9 +135,6 @@ extern "C" int UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API NativeInitDecoder(cons
 
 	videoContext->initThread = thread([]{
 		videoContext->manager->Init(videoContext->path.c_str());
-		unsigned int width = videoContext->manager->getVideoInfo().width;
-		unsigned int height = videoContext->manager->getVideoInfo().height;
-		s_CurrentAPI->Create(width, height);
 	});
 
 	return 0;
@@ -154,14 +150,16 @@ extern "C" int UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API NativeGetPlayerState()
 	return videoContext->manager->GetPlayerState();
 }
 
-extern "C" bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API NativeCreateTexture(void** tex0, void** tex1, void** tex2)
+extern "C" bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API NativeCreateTexture(void** texY, void** texU, void** texV)
 {
-	if (tex0 == nullptr || tex1 == nullptr || tex2 == nullptr)
+	if (texY == nullptr || texU == nullptr || texV == nullptr)
 	{
 		return false;
 	}
 
-	s_CurrentAPI->GetResourcePointers(tex0, tex1, tex2);
+	unsigned int width = videoContext->manager->getVideoInfo().width;
+	unsigned int height = videoContext->manager->getVideoInfo().height;
+	s_CurrentAPI->Create(width, height, texY, texU, texV);
 	return true;
 }
 
@@ -193,6 +191,7 @@ extern "C" bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API NativeStart()
 
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API NativeDestroy()
 {
+	videoContext->manager->Stop();
 	if (videoContext->initThread.joinable())
 	{
 		videoContext->initThread.join();
@@ -217,7 +216,7 @@ extern "C" bool UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API NativeIsEOF(int id)
 
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API SetTimeFromUnity(float time)
 {
-
+	videoContext->progressTime = time;
 }
 
 extern "C" Decoder::VideoInfo UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API NativeGetVideoInfo()
@@ -255,26 +254,6 @@ extern "C" Decoder::VideoInfo UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API NativeG
 //	}
 //
 //	videoCtx->manager->EnableVideo(isEnabled);
-//}
-
-// TODO videoformat
-//void nativeGetVideoFormat(int id, int& width, int& height, float& totalTime)
-//{
-//	shared_ptr<VideoContext> videoCtx;
-//	if (!getVideoContext(id, videoCtx))
-//	{ 
-//		return; 
-//	}
-//
-//	if (videoCtx->manager->GetPlayerState() < Manager::PlayerState::INITIALIZED)
-//	{
-//		return;
-//	}
-//
-//	Decoder::VideoInfo* videoInfo = &(videoCtx->manager->getVideoInfo());
-//	width = videoInfo->width;
-//	height = videoInfo->height;
-//	totalTime = (float)(videoInfo->totalTime);
 //}
 
 // TODO videotime

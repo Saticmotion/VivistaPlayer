@@ -234,7 +234,7 @@ bool Decoder::Decode()
 		}
 		else if (audioInfo.isEnabled && packet.stream_index == audioStream->index)
 		{
-			UpdateAudioFrame();
+			//UpdateAudioFrame();
 		}
 
 		av_packet_unref(&packet);
@@ -308,8 +308,7 @@ double Decoder::GetVideoFrame(unsigned char** outputY, unsigned char** outputU, 
 	*outputU = frame->data[1];
 	*outputV = frame->data[2];
 	// PTS
-	int64_t timeStamp = 0;
-	//int64_t timeStamp = av_frame_get_best_effort_timestamp(frame);
+	int64_t timeStamp = frame->best_effort_timestamp;
 	double timeInSec = av_q2d(videoStream->time_base) * timeStamp;
 	videoInfo.lastTime = timeInSec;
 
@@ -403,18 +402,17 @@ void Decoder::UpdateBufferState()
 
 bool Decoder::IsBuffBlocked()
 {
-	bool ret = false;
-	if (videoInfo.isEnabled && videoFrames.size() >= videoBuffMax)
+	if (videoInfo.isEnabled && videoInfo.bufferState == BufferState::FULL)
 	{
-		ret = true;
+		return true;
 	}
 
-	if (audioInfo.isEnabled && audioFrames.size() >= audioBuffMax)
+	if (audioInfo.isEnabled && audioInfo.bufferState == BufferState::FULL)
 	{
-		ret = true;
+		return true;
 	}
 
-	return ret;
+	return false;
 }
 
 /**

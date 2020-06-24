@@ -41,7 +41,7 @@ public class VivistaPlayer : MonoBehaviour
 	private static extern void SetTimeFromUnity(float t);
 
 	[DllImport("VivistaPlayer")]
-	private static extern void DestroyDecoderNative();
+	private static extern void NativeDestroy();
 
 	[DllImport("VivistaPlayer")]
 	private static extern void SetVideoDisabledNative(bool status);
@@ -50,7 +50,7 @@ public class VivistaPlayer : MonoBehaviour
 	private static extern void SetAudioDisabledNative(bool status);
 
 	[DllImport("VivistaPlayer")]
-	private static extern IntPtr GetRenderEventFunc();
+	private static extern IntPtr GetUpdateFunc();
 
 	[DllImport("VivistaPlayer")]
 	private static extern bool NativeCreateTexture(ref IntPtr y, ref IntPtr u, ref IntPtr v);
@@ -124,20 +124,7 @@ public class VivistaPlayer : MonoBehaviour
 	private Texture2D videoTexU;
 	private Texture2D videoTexV;
 
-	private IntPtr renderEventFunc;
-
-	private void Start()
-	{
-#if !UNITY_EDITOR
-		RegisterPlugin();
-#endif
-		//CreateTextureAndPassToPlugin();
-		//yield return StartCoroutine("CallPluginAtEndOfFrames");
-		renderEventFunc = GetRenderEventFunc();
-		GL.IssuePluginEvent(renderEventFunc, 1);
-
-		RegisterDebugLogCallback(DebugLog);
-	}
+	private IntPtr nativeUpdateFunc;
 
 	private void Awake()
 	{
@@ -147,6 +134,16 @@ public class VivistaPlayer : MonoBehaviour
 			prepareCompleted.AddListener(StartDecoding);
 			Prepare(url);
 		}
+	}
+
+	private void Start()
+	{
+#if !UNITY_EDITOR
+		RegisterPlugin();
+#endif
+		nativeUpdateFunc = GetUpdateFunc();
+
+		RegisterDebugLogCallback(DebugLog);
 	}
 
 	private void Update()
@@ -168,6 +165,13 @@ public class VivistaPlayer : MonoBehaviour
 		}
 	}
 
+#if UNITY_EDITOR
+	private void OnDestroy()
+	{
+		NativeDestroy();
+	}
+#endif
+
 	private void Prepare(string path)
 	{
 		StartCoroutine(InitDecoder(path));
@@ -181,12 +185,6 @@ public class VivistaPlayer : MonoBehaviour
 		url = path;
 		decoderId = -1;
 		NativeInitDecoder(path, ref decoderId);
-
-		var videoInfo = NativeGetVideoInfo();
-		videoWidth = videoInfo.width;
-		videoHeight = videoInfo.height;
-
-		CreateTextures();
 
 		int result;
 		do
@@ -205,34 +203,6 @@ public class VivistaPlayer : MonoBehaviour
 		{
 			DebugLog("Init failed");
 		}
-	}
-
-	private IEnumerator InitDecoderAsync(string path)
-	{
-		DebugLog("init Decoder Async");
-		playerState = PlayerState.INTIALIZING;
-		url = path;
-
-		decoderId = -1;
-		NativeInitDecoder(url, ref decoderId);
-
-		// Check init decoder state;
-
-		// Check video enabled;
-		if (!videoDisabled)
-		{
-
-		}
-
-		// Check audio enabled;
-		if (!audioDisabled)
-		{
-
-		}
-
-		playerState = PlayerState.INITIALIZED;
-
-		return null;
 	}
 
 	private void CreateTextures()
@@ -288,6 +258,12 @@ public class VivistaPlayer : MonoBehaviour
 
 	public void StartDecoding()
 	{
+		var videoInfo = NativeGetVideoInfo();
+		videoWidth = videoInfo.width;
+		videoHeight = videoInfo.height;
+
+		CreateTextures();
+
 		if (!NativeStart())
 		{
 			DebugLog("Failed to start video");
@@ -323,7 +299,18 @@ public class VivistaPlayer : MonoBehaviour
 
 			SetTimeFromUnity(Time.timeSinceLevelLoad);
 
-			GL.IssuePluginEvent(renderEventFunc, 1);
+			GL.IssuePluginEvent(nativeUpdateFunc, 1);
+		}
+	}
+
+	private void OnAudioFilterRead(float[] data, int channels)
+	{
+		int dataLen = data.Length / channels;
+
+		int n = 0;
+		while (n < dataLen)
+		{
+
 		}
 	}
 
